@@ -1,0 +1,5 @@
+{
+  "name": "Shinobi Gaiden",
+  "description": "A minimalist Shinobi war tracker app featuring power balance, seal tracking, and map location visualization.",
+  "requestFramePermissions": []
+}
