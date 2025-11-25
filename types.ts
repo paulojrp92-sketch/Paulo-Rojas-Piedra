@@ -2,7 +2,7 @@ export interface GlobalState {
   konohaPercentage: number;
   activeSeals: number;
   protectedSeals: number;
-  isPopupOpen: boolean;
+  lastPopupTimestamp: number;
 }
 
 export enum Faction {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Shield, Zap, Scroll, Menu, User } from 'lucide-react';
 import { CloudBackground } from './components/CloudBackground';
 import { PowerBalanceBar } from './components/PowerBalanceBar';
@@ -6,13 +6,77 @@ import { StatCard } from './components/StatCard';
 import { MapSection } from './components/MapSection';
 import { AdminPanel } from './components/AdminPanel';
 import { PopupNotification } from './components/PopupNotification';
+import { GlobalState } from './types';
+
+const STORAGE_KEY = 'shinobi_gaiden_state';
+const CHANNEL_NAME = 'shinobi_gaiden_sync';
+
+const DEFAULT_STATE: GlobalState = {
+  activeSeals: 12,
+  protectedSeals: 5,
+  konohaPercentage: 65,
+  lastPopupTimestamp: 0,
+};
 
 const App: React.FC = () => {
-  // State for the application
-  const [activeSeals, setActiveSeals] = useState(12);
-  const [protectedSeals, setProtectedSeals] = useState(5);
-  const [konohaPercentage, setKonohaPercentage] = useState(65); // Default: Konoha winning slightly
+  // Initialize state from localStorage or default
+  const [state, setState] = useState<GlobalState>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : DEFAULT_STATE;
+  });
+
   const [isPopupOpen, setIsPopupOpen] = useState(false);
+  
+  // Track the last timestamp we processed to avoid re-opening the popup if the user closed it
+  const [lastProcessedPopupTime, setLastProcessedPopupTime] = useState(state.lastPopupTimestamp);
+
+  // Broadcast Channel for cross-tab sync
+  useEffect(() => {
+    const channel = new BroadcastChannel(CHANNEL_NAME);
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data) {
+        setState(event.data);
+      }
+    };
+
+    channel.onmessage = handleMessage;
+
+    return () => {
+      channel.close();
+    };
+  }, []);
+
+  // Sync with localStorage and trigger popup if timestamp changed
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    
+    // Check if there is a new popup announcement
+    if (state.lastPopupTimestamp > lastProcessedPopupTime && state.lastPopupTimestamp > 0) {
+      setIsPopupOpen(true);
+      setLastProcessedPopupTime(state.lastPopupTimestamp);
+    }
+  }, [state, lastProcessedPopupTime]);
+
+  // Helper to update state and broadcast
+  const updateGlobalState = useCallback((updates: Partial<GlobalState>) => {
+    setState(prev => {
+      const newState = { ...prev, ...updates };
+      const channel = new BroadcastChannel(CHANNEL_NAME);
+      channel.postMessage(newState);
+      channel.close();
+      return newState;
+    });
+  }, []);
+
+  // Admin Actions
+  const handleSetActiveSeals = (val: number) => updateGlobalState({ activeSeals: val });
+  const handleSetProtectedSeals = (val: number) => updateGlobalState({ protectedSeals: val });
+  const handleSetKonohaPercentage = (val: number) => updateGlobalState({ konohaPercentage: val });
+  
+  const triggerPopup = () => {
+    updateGlobalState({ lastPopupTimestamp: Date.now() });
+  };
 
   return (
     <div className="min-h-screen relative flex flex-col font-sans text-slate-800">
@@ -38,7 +102,7 @@ const App: React.FC = () => {
         
         {/* Power Balance Section */}
         <section className="mb-8">
-            <PowerBalanceBar konohaPercentage={konohaPercentage} />
+            <PowerBalanceBar konohaPercentage={state.konohaPercentage} />
         </section>
 
         {/* Seals Status Section */}
@@ -53,13 +117,13 @@ const App: React.FC = () => {
             <div className="flex gap-4 w-full">
                 <StatCard 
                     label="Activos" 
-                    value={activeSeals} 
+                    value={state.activeSeals} 
                     icon={Zap} 
                     colorClass="text-amber-500" 
                 />
                 <StatCard 
                     label="Protegidos" 
-                    value={protectedSeals} 
+                    value={state.protectedSeals} 
                     icon={Shield} 
                     colorClass="text-emerald-600" 
                 />
@@ -87,13 +151,13 @@ const App: React.FC = () => {
 
       {/* Admin / Interactive Demo Controls */}
       <AdminPanel 
-        activeSeals={activeSeals}
-        setActiveSeals={setActiveSeals}
-        protectedSeals={protectedSeals}
-        setProtectedSeals={setProtectedSeals}
-        konohaPercentage={konohaPercentage}
-        setKonohaPercentage={setKonohaPercentage}
-        triggerPopup={() => setIsPopupOpen(true)}
+        activeSeals={state.activeSeals}
+        setActiveSeals={handleSetActiveSeals}
+        protectedSeals={state.protectedSeals}
+        setProtectedSeals={handleSetProtectedSeals}
+        konohaPercentage={state.konohaPercentage}
+        setKonohaPercentage={handleSetKonohaPercentage}
+        triggerPopup={triggerPopup}
       />
 
       {/* Popups */}
